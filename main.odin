@@ -3,6 +3,7 @@ package main
 import "core:fmt"
 import "core:math"
 import "core:math/linalg"
+import "core:math/rand"
 import "core:time"
 
 import "vendor:raylib"
@@ -22,19 +23,21 @@ TARGET_FPS :: 240
 UPDATE_RATE :: 60 // Hz
 UPDATE_TIME :: time.Second / time.Duration(UPDATE_RATE) // ns
 
-GRAVITY :: 64
+GRAVITY :: 700
 DAMPING :: 0.95
 
 particles: #soa[dynamic]Particle
 dynamics: #soa[dynamic]Dynamics2D
 
+//rng := rand.create(0)
+
 Dynamics2D :: struct {
 	inv_mass:     f32, // 1 / mass
 	damping:      f32,
+	force:        Vec2,
 	position:     Vec2,
 	velocity:     Vec2,
 	acceleration: Vec2,
-	gravity:      Vec2,
 }
 
 get_inv_mass :: proc(mass: f32) -> f32 {
@@ -47,25 +50,25 @@ set_mass :: proc(dyn: ^Dynamics2D, mass: f32) {
 
 Particle :: struct {
 	size:     Vec2,
-	dynamics: int, // index into dynamics
 	color:    Color,
+	dynamics: i32, // index into dynamics
 }
 
 make_particle :: proc(
 	size: Vec2,
+	color: Color = raylib.GRAY,
+	inv_mass: f32 = 0,
+	damping: f32 = DAMPING,
+	force: Vec2 = {},
 	position: Vec2 = {},
 	velocity: Vec2 = {},
 	acceleration: Vec2 = {},
-	gravity: Vec2 = {0, GRAVITY},
-	inv_mass: f32 = 0,
-	damping: f32 = 0.95,
-	color: Color = raylib.GRAY,
 ) -> Particle {
-	dyn := Dynamics2D{inv_mass, damping, position, velocity, acceleration, gravity}
-	index := len(dynamics)
+	dyn := Dynamics2D{inv_mass, damping, force, position, velocity, acceleration}
+	index := i32(len(dynamics))
 	append(&dynamics, dyn)
 
-	return Particle{size, index, color}
+	return Particle{size, color, index}
 }
 
 draw_particles :: proc() {
@@ -79,15 +82,46 @@ integrate :: proc(time_step: f32) {
 	for &dyn in dynamics {
 		dyn.position += dyn.velocity * time_step
 
-		force_accumulated := dyn.gravity
-		dyn.acceleration = force_accumulated * dyn.inv_mass
+		dyn.acceleration = dyn.force * dyn.inv_mass
 
 		dyn.velocity += dyn.acceleration * time_step
 		dyn.velocity *= math.pow(dyn.damping, time_step)
+
+		dyn.force = {}
 	}
 }
 
+apply_gravity :: proc() {
+	for &dyn in dynamics {
+		dyn.force += {0, GRAVITY}
+	}
+}
+
+apply_drag :: proc() {
+	for &dyn in dynamics {
+		k1: f32 = 0
+		k2: f32 = 0.001
+		speed := linalg.vector_length(dyn.velocity)
+
+		drag_coeff := k1 * speed + k2 * speed * speed
+
+		norm_velocity := linalg.vector_normalize(dyn.velocity)
+		drag_force := norm_velocity * -drag_coeff
+
+		dyn.force += drag_force
+	}
+}
+
+apply_springs :: proc() {
+
+}
+
 update :: proc(time_step: f32) {
+	apply_gravity()
+
+	apply_springs()
+	//apply_drag()
+
 	integrate(time_step)
 }
 
@@ -112,18 +146,20 @@ main :: proc() {
 	//floor_pos := Vec2{0, 500}
 	//append(&particles, make_particle(floor_size, floor_pos))
 
-	for i in 0 ..< 32 {
-		particle_size := Vec2{4, 4}
+	for i in 0 ..< 16 {
+		particle_size := Vec2{10, 10}
 		particle_pos := Vec2{SCREEN_WIDTH / 2.0, 500}
-		displace := f32(i) * 1.5
-		displace = i % 2 == 0 ? -displace : displace
-		particle_acc := Vec2{displace, -256}
+
+		x_vel := f32(i) * 12
+		x_vel *= i % 2 == 0 ? 1 : -1
+		particle_vel := Vec2{x_vel, -800}
+
 		append(
 			&particles,
 			make_particle(
-				particle_size,
-				particle_pos,
-				particle_acc,
+				size = particle_size,
+				position = particle_pos,
+				velocity = particle_vel,
 				inv_mass = get_inv_mass(1),
 				color = raylib.MAROON,
 			),
