@@ -28,7 +28,7 @@ DAMPING :: 0.90
 
 particles: #soa[dynamic]Particle
 dynamics: #soa[dynamic]Dynamics2D
-springs: [dynamic]Spring
+springs: #soa[dynamic]Spring
 
 Spring :: struct {
 	body1_index:     i32,
@@ -103,21 +103,6 @@ apply_gravity :: proc() {
 	}
 }
 
-apply_drag :: proc() {
-	for &dyn in dynamics {
-		k1: f32 = 0
-		k2: f32 = 0.001
-		speed := linalg.vector_length(dyn.velocity)
-
-		drag_coeff := k1 * speed + k2 * speed * speed
-
-		norm_velocity := linalg.vector_normalize(dyn.velocity)
-		drag_force := norm_velocity * -drag_coeff
-
-		dyn.force += drag_force
-	}
-}
-
 apply_springs :: proc() {
 	for spring in springs {
 		body1 := &dynamics[spring.body1_index]
@@ -177,7 +162,7 @@ main :: proc() {
 		size = {10, 10},
 		position = {SCREEN_WIDTH / 2.0, 200},
 		inv_mass = 0, // immovable
-		color = raylib.BLUE,
+		color = raylib.DARKBLUE,
 	)
 	append(&particles, p2)
 
