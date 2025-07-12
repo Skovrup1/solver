@@ -20,16 +20,22 @@ SCREEN_HEIGHT :: 600
 
 TARGET_FPS :: 240
 
-UPDATE_RATE :: 60 // Hz
+UPDATE_RATE :: 480 // Hz
 UPDATE_TIME :: time.Second / time.Duration(UPDATE_RATE) // ns
 
-GRAVITY :: 700
-DAMPING :: 0.95
+GRAVITY :: 1
+DAMPING :: 0.90
 
 particles: #soa[dynamic]Particle
 dynamics: #soa[dynamic]Dynamics2D
+springs: [dynamic]Spring
 
-//rng := rand.create(0)
+Spring :: struct {
+	body1_index:     i32,
+	body2_index:     i32,
+	spring_constant: f32,
+	rest_length:     f32,
+}
 
 Dynamics2D :: struct {
 	inv_mass:     f32, // 1 / mass
@@ -92,7 +98,7 @@ integrate :: proc(time_step: f32) {
 }
 
 apply_gravity :: proc() {
-	for &dyn in dynamics {
+	for &dyn, i in dynamics {
 		dyn.force += {0, GRAVITY}
 	}
 }
@@ -113,12 +119,29 @@ apply_drag :: proc() {
 }
 
 apply_springs :: proc() {
+	for spring in springs {
+		body1 := &dynamics[spring.body1_index]
+		body2 := &dynamics[spring.body2_index]
 
+		spring_vector := body1.position - body2.position
+
+		spring_length := linalg.vector_length(spring_vector)
+		assert(spring_length != 0)
+
+		displacement := spring_length - spring.rest_length
+
+		force_length := spring.spring_constant * displacement
+		force_direction := spring_vector / spring_length
+
+		spring_force := force_direction * force_length
+
+		body1.force -= spring_force
+		body2.force += spring_force
+	}
 }
 
 update :: proc(time_step: f32) {
 	apply_gravity()
-
 	apply_springs()
 	//apply_drag()
 
@@ -142,29 +165,29 @@ main :: proc() {
 
 	raylib.SetTargetFPS(TARGET_FPS)
 
-	//floor_size := Vec2{SCREEN_WIDTH, 100}
-	//floor_pos := Vec2{0, 500}
-	//append(&particles, make_particle(floor_size, floor_pos))
+	p1 := make_particle(
+		size = {10, 10},
+		position = {SCREEN_WIDTH / 2.0, 100},
+		inv_mass = get_inv_mass(1),
+		color = raylib.MAROON,
+	)
+	append(&particles, p1)
 
-	for i in 0 ..< 16 {
-		particle_size := Vec2{10, 10}
-		particle_pos := Vec2{SCREEN_WIDTH / 2.0, 500}
+	p2 := make_particle(
+		size = {10, 10},
+		position = {SCREEN_WIDTH / 2.0, 200},
+		inv_mass = 0, // immovable
+		color = raylib.BLUE,
+	)
+	append(&particles, p2)
 
-		x_vel := f32(i) * 12
-		x_vel *= i % 2 == 0 ? 1 : -1
-		particle_vel := Vec2{x_vel, -800}
-
-		append(
-			&particles,
-			make_particle(
-				size = particle_size,
-				position = particle_pos,
-				velocity = particle_vel,
-				inv_mass = get_inv_mass(1),
-				color = raylib.MAROON,
-			),
-		)
+	spring := Spring {
+		body1_index     = p1.dynamics,
+		body2_index     = p2.dynamics,
+		spring_constant = 4,
+		rest_length     = 2,
 	}
+	append(&springs, spring)
 
 	accumulator: time.Duration = 0
 	for !raylib.WindowShouldClose() {
